@@ -1,7 +1,7 @@
 require('dotenv').config()
-const Imap = require('imap');
-const fs = require('fs');
-const {simpleParser} = require('mailparser');
+const Imap = require('imap')
+const fs = require('fs')
+const { simpleParser } = require('mailparser')
 
 const imap = new Imap({
   user: process.env.EMAIL,
@@ -10,56 +10,58 @@ const imap = new Imap({
   port: process.env.PORT,
   tls: true,
   tlsOptions: {
-    rejectUnauthorized: false
-  }
-});
+    rejectUnauthorized: false,
+  },
+})
 
-imap.once('ready', function() {
-  console.log('Connected to IMAP server');
+imap.once('ready', function () {
+  console.log('Connected to IMAP server')
 
-  imap.openBox('INBOX', true, function(err, box) {
-    if (err) throw err;
+  imap.openBox('INBOX', true, function (err, box) {
+    if (err) throw err
 
-    console.log(`Total messages in INBOX: ${box.messages.total}`);
+    if (err) throw err
+    const f = imap.seq.fetch('1:*', {
+      // You can change this range
+      bodies: '',
+      struct: true,
+    })
+    f.on('message', function (msg, seqno) {
+      console.log('Message #%d', seqno)
+      let buffer = ''
+      msg.on('body', function (stream, info) {
+        stream.on('data', function (chunk) {
+          buffer += chunk.toString('utf8')
+        })
+      })
+      msg.once('attributes', function (attrs) {
+        simpleParser(buffer, (err, mail) => {
+          if (err) throw err
+          console.log('Email Parsed', {
+            from: mail.from.text,
+            subject: mail.subject,
+            body: mail.text,
+            date: mail.date,
+          })
+        })
+      })
+    })
+    f.once('error', function (err) {
+      console.log('Fetch error: ' + err)
+    })
+    f.once('end', function () {
+      console.log('Done fetching all messages!')
+      imap.end()
+    })
+  })
+})
 
-    imap.on('mail', function(numNewMsgs) {
-      console.log(`New email received: ${numNewMsgs} new messages`);
+imap.once('error', function (err) {
+  console.log(err)
+})
 
-      // Son e-postayı al
-      const f = imap.seq.fetch(box.messages.total, { bodies: [''] });
-      f.on('message', function(msg, seqno) {
+imap.once('end', function () {
+  console.log('Connection ended')
+})
 
-        msg.on('body', function(stream, info) {
-
-          var buffer = '';
-          stream.on('data', function(chunk) {
-            buffer += chunk.toString('utf8');
-          });
-          stream.once('end', function() {
-            simpleParser(buffer, async (err, email) => {
-              console.log(email);
-              console.log(email.text.split('>')[0]);
-              email.attachments.forEach((attachment) => {
-                const filePath = './downloads/' + attachment.filename;
-                const fileStream = fs.createWriteStream(filePath);
-                fileStream.write(attachment.content);
-                fileStream.end();
-                console.log(`Ek "${filePath}" dosyaya kaydedildi.`);
-              });
-            });
-          });
-        });
-      });
-    });
-  });
-});
-
-imap.once('error', function(err) {
-  console.log(err);
-});
-
-imap.once('end', function() {
-  console.log('Connection ended');
-});
-
-imap.connect();
+imap.connect()
